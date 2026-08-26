@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#1a1a1a">
+  <meta name="apple-mobile-web-app-title" content="pwarx">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A6%3C/text%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='16' fill='%231a1a1a'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle' fill='white'%3E%F0%9F%93%A6%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <title>pwarx &mdash; P2P WASM app relay</title>
+</head>
+<body>
+<main>
+  <header>
+    <div class="header-row">
+      <h1>pwarx</h1>
+      <button type="button" id="about-btn" class="about-btn" aria-label="About" title="About">&#63;</button>
+    </div>
+    <p class="sub">Peer-to-peer WASM app relay</p>
+  </header>
+  <div id="drop-zone" class="drop-zone">
+    <p>Drop a <code>.wasm-pkg</code> file here</p>
+    <p class="hint">or <button type="button" id="pick-btn" class="linkish">choose a file</button></p>
+    <input type="file" id="file-input" accept=".wasm-pkg">
+  </div>
+  <section id="app-list" class="app-list" hidden>
+    <h2>Apps</h2>
+    <div id="app-cards" class="app-cards"></div>
+  </section>
+  <section id="empty-state" class="empty-state">
+    <p>No apps yet. Import a <code>.wasm-pkg</code> to get started.</p>
+  </section>
+</main>
+<div id="qr-overlay" class="qr-overlay" hidden>
+  <div class="qr-panel">
+    <button type="button" class="qr-close" id="qr-close" aria-label="Close">&times;</button>
+    <h3 id="qr-title">Share</h3>
+    <div id="qr-code" class="qr-code"></div>
+    <p id="qr-status" class="qr-status">Starting session&hellip;</p>
+    <button type="button" class="btn" id="qr-cancel">Cancel</button>
+  </div>
+</div>
+<div id="progress-overlay" class="progress-overlay" hidden>
+  <div class="progress-panel">
+    <h3>Receiving app&hellip;</h3>
+    <p id="progress-name" class="progress-name"></p>
+    <div class="progress-bar-track"><div id="progress-bar" class="progress-bar-fill" style="width:0%"></div></div>
+    <p id="progress-text" class="progress-text">0%</p>
+  </div>
+</div>
+<div id="about-overlay" class="about-overlay" hidden>
+  <div class="about-panel">
+    <button type="button" class="about-close" id="about-close" aria-label="Close">&times;</button>
+    <h3>pwarx</h3>
+    <p>Peer-to-peer WASM app relay — import, share, and launch portable <code>.wasm-pkg</code> apps from any browser.</p>
+    <p><a href="https://github.com/pwarx/pwarx.github.io" target="_blank" rel="noopener">GitHub</a></p>
+  </div>
+</div>
+<button id="debug-btn" class="debug-btn" aria-label="Toggle debug">&gt;_</button>
+<pre id="debug-log" class="debug-log" hidden></pre>
+<script src="qrcode-lib.js" defer></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="app.js" defer></script>
+</body>
+</html>
