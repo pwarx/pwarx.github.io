@@ -46,6 +46,10 @@
 <button id="debug-btn" class="debug-btn" aria-label="Toggle log">&gt;_</button>
 <div id="debug-panel" class="debug-panel" hidden>
   <pre id="debug-log" class="debug-log"></pre>
+  <div class="debug-input-row">
+    <span class="debug-prompt" id="debug-prompt">$</span>
+    <input type="text" id="debug-input" class="debug-input" autocomplete="off" spellcheck="false">
+  </div>
   <div class="debug-toolbar">
     <button type="button" id="debug-refresh-sw" class="debug-tool-btn">Refresh SW</button>
     <button type="button" id="debug-export" class="debug-tool-btn">Export logs</button>

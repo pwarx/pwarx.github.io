@@ -556,6 +556,23 @@ const debugRefreshSw = document.getElementById("debug-refresh-sw");
 const debugClear = document.getElementById("debug-clear");
 const debugClose = document.getElementById("debug-close");
 const debugExport = document.getElementById("debug-export");
+const debugInput = document.getElementById("debug-input");
+const debugPrompt = document.getElementById("debug-prompt");
+
+let shellApp = null;
+let shellPath = "";
+let shellHistory = [];
+let shellHistIdx = -1;
+
+function shellPrompt() {
+  if (shellApp) return shellApp.name + " v" + shellApp.version + (shellPath ? "/" + shellPath : "") + " $";
+  return "$";
+}
+
+function shellPrint(text) {
+  debugLog.textContent += (debugLog.textContent ? "\n" : "") + text;
+  debugLog.scrollTop = debugLog.scrollHeight;
+}
 
 function ts() { return new Date().toISOString(); }
 function fmtTs(t) { return t.slice(11, 23); }
@@ -626,6 +643,10 @@ async function clearLogs() {
 }
 
 async function refreshSw() {
+  if (!("serviceWorker" in navigator)) {
+    log("warn", "Service Worker not available (insecure context?)");
+    return;
+  }
   log("action", "Refreshing Service Worker...");
   try {
     const reg = await navigator.serviceWorker.getRegistration();
@@ -665,16 +686,23 @@ log("info", "pwarx ready " + navigator.userAgent.slice(0, 50));
 if (window.navigator.standalone) log("info", "standalone mode");
 
 debugBtn.addEventListener("click", () => {
-  const h = debugPanel.hidden;
-  debugPanel.hidden = !h;
-  debugBtn.textContent = h ? "X" : ">";
-  if (!h) debugLog.scrollTop = debugLog.scrollHeight;
+  const wasHidden = debugPanel.hidden;
+  debugPanel.hidden = !wasHidden;
+  debugBtn.textContent = wasHidden ? "X" : ">";
+  if (wasHidden) {
+    debugLog.scrollTop = debugLog.scrollHeight;
+    requestAnimationFrame(() => debugInput.focus());
+  }
 });
 
-debugClose.addEventListener("click", () => {
+function closePanel() {
   debugPanel.hidden = true;
   debugBtn.textContent = ">";
-});
+  shellHistory = [];
+  shellHistIdx = -1;
+}
+
+debugClose.addEventListener("click", closePanel);
 
 debugClear.addEventListener("click", clearLogs);
 debugExport.addEventListener("click", exportLogs);
@@ -682,6 +710,308 @@ debugRefreshSw.addEventListener("click", refreshSw);
 
 window.addEventListener("error", (e) => log("error", e.message));
 window.addEventListener("unhandledrejection", (e) => log("error", String(e.reason)));
+
+// ---- Shell ----
+
+function updatePrompt() {
+  debugPrompt.textContent = shellPrompt();
+}
+
+function listDirs(paths) {
+  const dirs = new Set();
+  for (const p of paths) {
+    const idx = p.indexOf("/");
+    if (idx >= 0) dirs.add(p.slice(0, idx));
+  }
+  return [...dirs].map(d => d + "/");
+}
+
+async function shellExec(line) {
+  const parts = line.trim().split(/\s+/);
+  const cmd = parts[0];
+  const arg = parts.slice(1).join(" ");
+
+  if (cmd === "help") {
+    shellPrint("Commands:");
+    shellPrint("  ls             list apps (root) or files (in app)");
+    shellPrint("  cd <name|..>   enter app / subdirectory / go up");
+    shellPrint("  pwd            print working directory");
+    shellPrint("  open <path>    open file in new tab");
+    shellPrint("  cat <path>     display text file content");
+    shellPrint("  clear          clear screen");
+    shellPrint("  exit           close panel");
+    shellPrint("  help           this message");
+  } else if (cmd === "clear") {
+    debugLog.textContent = "";
+  } else if (cmd === "exit") {
+    closePanel();
+  } else if (cmd === "pwd") {
+    shellPrint(shellApp ? "/app/" + shellApp.name + (shellPath ? "/" + shellPath : "") : "~");
+  } else if (cmd === "ls") {
+    if (!shellApp) {
+      const apps = await listApps();
+      if (apps.length === 0) {
+        shellPrint("(no apps)");
+      } else {
+        shellPrint("Apps:");
+        const seen = new Map();
+        for (const a of apps) seen.set(a.name, (seen.get(a.name) || 0) + 1);
+        for (const a of apps) {
+          const hint = seen.get(a.name) > 1 ? "  (cd \"" + a.name + " v" + a.version + "\")" : "";
+          shellPrint("  " + a.name + "  v" + a.version + hint);
+        }
+      }
+    } else {
+      const fullPaths = Object.keys(shellApp.files);
+      const relevant = shellPath ? fullPaths.filter(p => p.startsWith(shellPath + "/")).map(p => p.slice(shellPath.length + 1)) : fullPaths;
+      const files = relevant.filter(p => !p.includes("/"));
+      const dirs = listDirs(relevant);
+      if (dirs.length === 0 && files.length === 0) {
+        shellPrint("(empty)");
+      } else {
+        if (dirs.length) shellPrint("directories:");
+        for (const d of dirs) shellPrint("  " + d);
+        if (files.length) shellPrint("files:");
+        for (const f of files) shellPrint("  " + f);
+      }
+    }
+  } else if (cmd === "cd") {
+    if (!arg || arg === "~") {
+      shellApp = null;
+      shellPath = "";
+    } else if (arg === "..") {
+      if (!shellApp) { shellPrint("already at root"); }
+      else if (shellPath) {
+        const parts = shellPath.split("/");
+        parts.pop();
+        shellPath = parts.join("/");
+      } else {
+        shellApp = null;
+        shellPath = "";
+      }
+    } else {
+      if (!shellApp) {
+        const apps = await listApps();
+        const exact = apps.filter(a => a.id === arg);
+        if (exact.length === 1) {
+          shellApp = exact[0];
+          shellPath = "";
+        } else {
+          const byName = apps.filter(a => a.name === arg);
+          if (byName.length === 1) {
+            shellApp = byName[0];
+            shellPath = "";
+          } else if (byName.length > 1) {
+            shellPrint("multiple apps match \"" + arg + "\":");
+            for (const a of byName) shellPrint("  " + a.name + " v" + a.version + "  (cd \"" + a.name + " v" + a.version + "\")");
+          } else {
+            // try "name vVersion" pattern
+            const vmatch = arg.match(/^(.+?) v(.+)$/);
+            if (vmatch) {
+              const byNameV = apps.filter(a => a.name === vmatch[1] && a.version === vmatch[2]);
+              if (byNameV.length === 1) {
+                shellApp = byNameV[0];
+                shellPath = "";
+              } else {
+                shellPrint("app not found: " + arg);
+              }
+            } else {
+              shellPrint("app not found: " + arg);
+            }
+          }
+        }
+      } else {
+        const fullPaths = Object.keys(shellApp.files);
+        const prefix = shellPath ? shellPath + "/" + arg : arg;
+        const exists = fullPaths.some(p => p === prefix || p.startsWith(prefix + "/"));
+        if (exists) {
+          shellPath = prefix;
+        } else {
+          shellPrint("no such directory: " + arg);
+        }
+      }
+    }
+    updatePrompt();
+  } else if (cmd === "open") {
+    if (!shellApp) { shellPrint("no app selected (cd into one first)"); return; }
+    if (!arg) { shellPrint("usage: open <path>"); return; }
+    const fullPath = shellPath ? shellPath + "/" + arg : arg;
+    const file = shellApp.files[fullPath];
+    if (!file) { shellPrint("file not found: " + fullPath); return; }
+    const mime = file.mime || "application/octet-stream";
+    const binary = atob(file.data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mime });
+    const blobUrl = URL.createObjectURL(blob);
+    const fileName = fullPath.split("/").pop();
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(blobUrl); a.remove(); }, 1000);
+    shellPrint("opened " + fullPath);
+  } else if (cmd === "cat") {
+    if (!shellApp) { shellPrint("no app selected"); return; }
+    if (!arg) { shellPrint("usage: cat <path>"); return; }
+    const fullPath = shellPath ? shellPath + "/" + arg : arg;
+    const file = shellApp.files[fullPath];
+    if (!file) { shellPrint("file not found: " + fullPath); return; }
+    const text = atob(file.data);
+    shellPrint("--- " + fullPath + " ---");
+    shellPrint(text.length > 2000 ? text.slice(0, 2000) + "\n... (truncated)" : text);
+    shellPrint("---");
+  } else if (cmd) {
+    shellPrint("unknown command: " + cmd + " (type 'help')");
+  }
+}
+
+const COMMANDS = ["help", "ls", "cd", "pwd", "open", "cat", "clear", "exit"];
+
+async function completeInner(line) {
+  const parts = line.split(/\s+/);
+  const cmd = parts[0];
+  const hasSpace = line.endsWith(" ");
+  const partial = hasSpace ? "" : (parts.length > 1 ? parts[parts.length - 1] : parts[0]);
+  const isFirst = parts.length === 1 && !hasSpace;
+
+  let candidates = [];
+
+  if (isFirst) {
+    candidates = COMMANDS.filter(c => c.startsWith(partial));
+  } else if (["cd", "open", "cat"].includes(cmd)) {
+if (!shellApp && (cmd === "cd" || cmd === "open" || cmd === "cat")) {
+        // complete app names (with version hint if duplicates exist)
+        const apps = await listApps();
+        const nameCount = new Map();
+        for (const a of apps) nameCount.set(a.name, (nameCount.get(a.name) || 0) + 1);
+        candidates = apps.map(a => nameCount.get(a.name) > 1 ? a.name + " v" + a.version : a.name).filter(n => n.startsWith(partial));
+    } else if (shellApp) {
+      const fullPaths = Object.keys(shellApp.files);
+      const prefix = shellPath ? shellPath + "/" : "";
+      const relevant = fullPaths
+        .filter(p => p.startsWith(prefix))
+        .map(p => p.slice(prefix.length))
+        .filter(p => p.startsWith(partial));
+      // deduplicate dir prefixes
+      const seen = new Set();
+      for (const p of relevant.sort()) {
+        const idx = p.indexOf("/");
+        if (idx >= 0) {
+          const dir = p.slice(0, idx + 1);
+          if (!seen.has(dir)) { seen.add(dir); candidates.push(dir); }
+        } else {
+          if (!seen.has(p)) { seen.add(p); candidates.push(p); }
+        }
+      }
+    }
+  }
+
+  return { candidates, partial };
+}
+
+debugInput.addEventListener("keydown", (e) => {
+  if (e.key === "Tab") {
+    e.preventDefault();
+    const line = debugInput.value;
+    completeInner(line).then(({ candidates, partial }) => {
+      if (candidates.length === 0) return;
+      if (candidates.length === 1) {
+        const completion = candidates[0];
+        const parts = line.split(/\s+/);
+        const hasSpace = line.endsWith(" ");
+        const isFirst = parts.length === 1 && !hasSpace;
+        if (isFirst) {
+          debugInput.value = completion + " ";
+        } else {
+          const before = line.slice(0, line.lastIndexOf(partial));
+          debugInput.value = before + completion + " ";
+        }
+      } else {
+        // show candidates
+        const ts = new Date().toISOString().slice(11, 23);
+        debugLog.textContent += (debugLog.textContent ? "\n" : "") + ts + "  " + candidates.join("  ");
+        debugLog.scrollTop = debugLog.scrollHeight;
+        // find common prefix
+        if (partial) {
+          const common = candidates.reduce((a, b) => {
+            let i = 0;
+            while (i < a.length && i < b.length && a[i] === b[i]) i++;
+            return a.slice(0, i);
+          });
+          if (common.length > partial.length) {
+            const parts = line.split(/\s+/);
+            const hasSpace = line.endsWith(" ");
+            const isFirst = parts.length === 1 && !hasSpace;
+            if (isFirst) {
+              debugInput.value = common;
+            } else {
+              const before = line.slice(0, line.lastIndexOf(partial));
+              debugInput.value = before + common;
+            }
+          }
+        }
+      }
+    });
+    return;
+  }
+  if (e.key === "Enter") {
+    const line = debugInput.value;
+    debugInput.value = "";
+    if (line.trim()) {
+      shellHistory.push(line.trim());
+      shellHistIdx = -1;
+      const ts = new Date().toISOString().slice(11, 23);
+      debugLog.textContent += (debugLog.textContent ? "\n" : "") + ts + " " + shellPrompt() + " " + line;
+      shellExec(line);
+    }
+    setTimeout(() => debugLog.scrollTop = debugLog.scrollHeight, 0);
+  }
+  if (e.key === "ArrowUp") {
+    e.preventDefault();
+    if (shellHistory.length === 0) return;
+    if (shellHistIdx === -1) shellHistIdx = shellHistory.length;
+    shellHistIdx = Math.max(0, shellHistIdx - 1);
+    debugInput.value = shellHistory[shellHistIdx];
+  }
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    if (shellHistIdx === -1) return;
+    shellHistIdx = Math.min(shellHistory.length - 1, shellHistIdx + 1);
+    debugInput.value = shellHistory[shellHistIdx];
+    if (shellHistIdx === shellHistory.length - 1) { shellHistIdx = -1; debugInput.value = ""; }
+  }
+  if (e.key === "l" && e.ctrlKey) {
+    e.preventDefault();
+    debugLog.textContent = "";
+  }
+  if (e.key === "u" && e.ctrlKey) {
+    e.preventDefault();
+    debugInput.value = "";
+  }
+});
+
+debugPanel.addEventListener("click", () => debugInput.focus());
+
+let lastEsc = 0;
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (debugPanel.hidden) {
+    const now = Date.now();
+    if (now - lastEsc < 400) {
+      debugPanel.hidden = false;
+      debugBtn.textContent = "X";
+      debugLog.scrollTop = debugLog.scrollHeight;
+      requestAnimationFrame(() => debugInput.focus());
+      lastEsc = 0;
+    } else {
+      lastEsc = now;
+    }
+  } else {
+    closePanel();
+  }
+});
 
 // ---- Init ----
 

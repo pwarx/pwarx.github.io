@@ -191,6 +191,23 @@ h2 { font-size: 0.95rem; font-weight: 600; margin: 1.5rem 0 0.75rem; letter-spac
   background: rgba(0,0,0,0.95);
   flex-shrink: 0;
 }
+.debug-input-row {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.3rem 0.75rem;
+  background: rgba(0,0,0,0.9);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.debug-prompt {
+  color: #0f0; font: 0.75rem/1.3 monospace;
+  white-space: nowrap; flex-shrink: 0;
+}
+.debug-input {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: #0f0; font: 0.75rem/1.3 monospace;
+  padding: 0.2rem 0;
+}
+.debug-input::placeholder { color: #555; }
 .debug-tool-btn {
   background: var(--btn); border: 1px solid var(--border); color: var(--muted);
   font: inherit; font-size: 0.72rem; padding: 0.3rem 0.6rem; border-radius: 0.3rem;
