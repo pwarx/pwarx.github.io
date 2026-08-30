@@ -1,5 +1,5 @@
 const DB_NAME = "pwarx-apps";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -8,6 +8,8 @@ function openDb() {
       const db = rq.result;
       if (!db.objectStoreNames.contains("apps"))
         db.createObjectStore("apps", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("logs"))
+        db.createObjectStore("logs", { keyPath: "id", autoIncrement: true });
     };
     rq.onsuccess = () => resolve(rq.result);
     rq.onerror = () => reject(rq.error);
@@ -175,8 +177,10 @@ async function importPkg(file) {
       if (!confirm(`"${app.name} v${app.version}" is already imported. Overwrite?`)) return;
     }
     await saveApp(app);
+    log("action", "Imported " + app.name + " v" + app.version);
     await loadAndRender();
   } catch (err) {
+    log("error", "Import failed: " + err.message);
     alert("Import failed: " + err.message);
   }
 }
@@ -206,7 +210,10 @@ appCards.addEventListener("click", async (e) => {
     await launchApp(id);
   } else if (action === "delete") {
     if (!confirm("Delete this app?")) return;
+    const app = await getApp(id);
+    if (!app) return;
     await deleteApp(id);
+    log("action", "Deleted " + app.name + " v" + app.version);
     await loadAndRender();
   } else if (action === "share") {
     startShare(id);
@@ -222,7 +229,7 @@ appCards.addEventListener("click", async (e) => {
 async function launchApp(id) {
   const app = await getApp(id);
   if (!app) return alert("App not found");
-  debug("launchApp", id);
+  log("info", "Launched " + app.name + " v" + app.version);
   location.href = "/app/" + id + "/" + app.entry;
 }
 
@@ -250,6 +257,7 @@ async function startShare(appId) {
 
   const card = document.querySelector(`.app-card[data-id="${appId}"]`);
   if (!card) return;
+  log("info", "Started sharing " + app.name + " v" + app.version);
   const oldExpanded = document.querySelector(".app-card.expanded");
   if (oldExpanded) closeQr();
   card.classList.add("expanded", "sending");
@@ -349,6 +357,7 @@ async function sendAppToPeer(conn, app) {
     if (sent % 5 === 0) await sleep(0);
   }
   if (statusEl) statusEl.textContent = "Done! Keep this window open so your friend can install the PWA.";
+  log("action", "Sent " + app.name + " v" + app.version + " to peer");
 }
 
 // ---- QR code ----
@@ -402,6 +411,7 @@ async function joinSession(sessionId, key, appId) {
   appList.hidden = false;
   emptyState.hidden = true;
   appCards.prepend(card);
+  log("info", "Connecting to session...");
 
   const iconEl = card.querySelector(".app-card-icon");
   const pie = card.querySelector(".app-card-pie");
@@ -420,6 +430,7 @@ async function joinSession(sessionId, key, appId) {
     });
 
     nameEl.textContent = "Receiving app\u2026";
+    log("info", "Connected to host");
 
     conn.send(JSON.stringify({ kind: "auth-key", key }));
 
@@ -444,6 +455,7 @@ async function joinSession(sessionId, key, appId) {
           versionEl.textContent = "v" + esc(msg.version);
           pie.style.mask = "conic-gradient(transparent 0deg 0deg, #fff 0deg 360deg)";
           pie.style.webkitMask = pie.style.mask;
+          log("info", "Receiving " + msg.name + " v" + msg.version);
         } else if (msg.kind === "file") {
           receivedFiles[msg.path] = { data: msg.data, mime: msg.mime };
           receivedCount++;
@@ -473,15 +485,18 @@ async function joinSession(sessionId, key, appId) {
 
     conn.on("close", () => {
       if (receivedCount < expectedCount) {
+        log("warn", "Connection closed before transfer complete");
         nameEl.textContent = "Connection closed before transfer complete";
       }
     });
 
     conn.on("error", (err) => {
+      log("error", "Connection error: " + err.message);
       nameEl.textContent = "Error: " + err.message;
     });
 
   } catch (err) {
+    log("error", "Join failed: " + err.message);
     nameEl.textContent = "Failed: " + err.message;
     versionEl.textContent = "";
     setTimeout(() => { card.remove(); }, 3000);
@@ -498,6 +513,7 @@ async function finishReceive(peer, conn, meta, files) {
   const id = meta.name + "-v" + (meta.version || "0");
   const size = pkgSize(files);
   const app = { id, name: meta.name, version: meta.version || "0", size, entry: meta.entry, icon: meta.icon || "", files };
+  log("action", "Saved " + meta.name + " v" + (meta.version || "0"));
   await saveApp(app);
   conn.close();
   peer.destroy();
@@ -531,31 +547,141 @@ function generateId(len) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-// ---- Debug console ----
+// ---- Logging console ----
 
 const debugLog = document.getElementById("debug-log");
 const debugBtn = document.getElementById("debug-btn");
-let debugLines = [];
+const debugPanel = document.getElementById("debug-panel");
+const debugRefreshSw = document.getElementById("debug-refresh-sw");
+const debugClear = document.getElementById("debug-clear");
+const debugClose = document.getElementById("debug-close");
+const debugExport = document.getElementById("debug-export");
 
-function debug() {
-  const msg = Array.from(arguments).map(a => typeof a === "object" ? JSON.stringify(a, null, 2) : String(a)).join(" ");
-  debugLines.push(new Date().toISOString().slice(11,19) + " " + msg);
-  if (debugLines.length > 200) debugLines.shift();
-  debugLog.textContent = debugLines.join("\n");
+function ts() { return new Date().toISOString(); }
+function fmtTs(t) { return t.slice(11, 23); }
+
+async function log(level, ...args) {
+  const msg = args.map(a => typeof a === "object" ? JSON.stringify(a, null, 2) : String(a)).join(" ");
+  const entry = { time: ts(), level, msg };
+  try {
+    const db = await openDb();
+    const tx = db.transaction("logs", "readwrite");
+    const store = tx.objectStore("logs");
+    store.add(entry);
+    const count = await new Promise((res, rej) => {
+      const rq = store.count();
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+    if (count > 1000) {
+      const rq = store.openCursor();
+      let toDelete = count - 1000;
+      rq.onsuccess = () => {
+        const cursor = rq.result;
+        if (cursor && toDelete > 0) {
+          store.delete(cursor.key);
+          toDelete--;
+          cursor.continue();
+        }
+      };
+    }
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+    db.close();
+  } catch (_) { /* log store unavailable */ }
+  renderLogEntry(entry);
 }
-debug("pwarx ready", navigator.userAgent.slice(0,50));
-if (window.navigator.standalone) debug("standalone mode");
 
-if (debugBtn) {
-  debugBtn.addEventListener("click", () => {
-    const h = debugLog.hidden;
-    debugLog.hidden = !h;
-    debugBtn.textContent = h ? "X" : ">_";
-  });
+function renderLogEntry(entry) {
+  const line = fmtTs(entry.time) + " [" + entry.level + "] " + entry.msg;
+  debugLog.textContent += (debugLog.textContent ? "\n" : "") + line;
+  debugLog.scrollTop = debugLog.scrollHeight;
 }
 
-window.addEventListener("error", (e) => debug("[error]", e.message));
-window.addEventListener("unhandledrejection", (e) => debug("[unhandled]", String(e.reason)));
+async function loadLogs() {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("logs", "readonly");
+    const store = tx.objectStore("logs");
+    const all = await new Promise((res, rej) => {
+      const rq = store.getAll();
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+    db.close();
+    debugLog.textContent = "";
+    for (const entry of all) renderLogEntry(entry);
+  } catch (_) { /* ignore */ }
+}
+
+async function clearLogs() {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("logs", "readwrite");
+    const store = tx.objectStore("logs");
+    store.clear();
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+    db.close();
+  } catch (_) { /* ignore */ }
+  debugLog.textContent = "";
+}
+
+async function refreshSw() {
+  log("action", "Refreshing Service Worker...");
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg) await reg.unregister();
+    log("action", "Service Worker unregistered, reloading...");
+    location.reload();
+  } catch (err) {
+    log("error", "SW refresh failed: " + err.message);
+  }
+}
+
+async function exportLogs() {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("logs", "readonly");
+    const store = tx.objectStore("logs");
+    const all = await new Promise((res, rej) => {
+      const rq = store.getAll();
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+    db.close();
+    const lines = all.map(e => e.time + " [" + e.level + "] " + e.msg).join("\n");
+    const blob = new Blob([lines], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "pwarx-logs-" + new Date().toISOString().slice(0, 10) + ".txt";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  } catch (err) {
+    log("error", "Export failed: " + err.message);
+  }
+}
+
+log("info", "pwarx ready " + navigator.userAgent.slice(0, 50));
+if (window.navigator.standalone) log("info", "standalone mode");
+
+debugBtn.addEventListener("click", () => {
+  const h = debugPanel.hidden;
+  debugPanel.hidden = !h;
+  debugBtn.textContent = h ? "X" : ">";
+  if (!h) debugLog.scrollTop = debugLog.scrollHeight;
+});
+
+debugClose.addEventListener("click", () => {
+  debugPanel.hidden = true;
+  debugBtn.textContent = ">";
+});
+
+debugClear.addEventListener("click", clearLogs);
+debugExport.addEventListener("click", exportLogs);
+debugRefreshSw.addEventListener("click", refreshSw);
+
+window.addEventListener("error", (e) => log("error", e.message));
+window.addEventListener("unhandledrejection", (e) => log("error", String(e.reason)));
 
 // ---- Init ----
 
@@ -577,6 +703,7 @@ function getHashParam(name) {
 }
 
 async function init() {
+  await loadLogs();
   if ("serviceWorker" in navigator && window.isSecureContext) {
     try {
       await navigator.serviceWorker.ready;

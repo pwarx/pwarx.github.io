@@ -43,8 +43,16 @@
     <p><a href="https://github.com/pwarx/pwarx.github.io" target="_blank" rel="noopener">GitHub</a></p>
   </div>
 </div>
-<button id="debug-btn" class="debug-btn" aria-label="Toggle debug">&gt;_</button>
-<pre id="debug-log" class="debug-log" hidden></pre>
+<button id="debug-btn" class="debug-btn" aria-label="Toggle log">&gt;_</button>
+<div id="debug-panel" class="debug-panel" hidden>
+  <pre id="debug-log" class="debug-log"></pre>
+  <div class="debug-toolbar">
+    <button type="button" id="debug-refresh-sw" class="debug-tool-btn">Refresh SW</button>
+    <button type="button" id="debug-export" class="debug-tool-btn">Export logs</button>
+    <button type="button" id="debug-clear" class="debug-tool-btn">Clear logs</button>
+    <button type="button" id="debug-close" class="debug-tool-btn debug-tool-close">&times;</button>
+  </div>
+</div>
 <script src="qrcode-lib.js" defer></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="app.js" defer></script>
