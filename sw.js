@@ -130,7 +130,7 @@ async function serveDynamicManifest(appId) {
 
 function openDb() {
   return new Promise((resolve, reject) => {
-    const rq = indexedDB.open(DB, 1);
+    const rq = indexedDB.open(DB);
     rq.onupgradeneeded = () => rq.result.createObjectStore("apps", { keyPath: "id" });
     rq.onsuccess = () => resolve(rq.result);
     rq.onerror = () => reject(rq.error);
