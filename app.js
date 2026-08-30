@@ -93,17 +93,6 @@ const pickBtn = $("#pick-btn");
 const appList = $("#app-list");
 const appCards = $("#app-cards");
 const emptyState = $("#empty-state");
-const qrOverlay = $("#qr-overlay");
-const qrCode = $("#qr-code");
-const qrStatus = $("#qr-status");
-const qrTitle = $("#qr-title");
-const qrClose = $("#qr-close");
-const qrCancel = $("#qr-cancel");
-const progressOverlay = $("#progress-overlay");
-const progressName = $("#progress-name");
-const progressBar = $("#progress-bar");
-const progressText = $("#progress-text");
-
 function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
 function pkgSize(files) {
@@ -152,9 +141,12 @@ function renderApps(apps) {
   for (const app of apps) {
     const card = document.createElement("div");
     card.className = "app-card";
+    card.dataset.id = app.id;
     const iconSrc = app.icon && app.files[app.icon] ? fileDataUrl(app.files[app.icon]) : "";
     card.innerHTML =
-      (iconSrc ? '<img class=app-card-icon src="' + iconSrc + '" alt="">' : "") +
+      '<div class=app-card-icon-wrapper>' +
+      (iconSrc ? '<img class=app-card-icon src="' + iconSrc + '" alt="">' : '<div class="app-card-icon placeholder"></div>') +
+      '<div class=app-card-pie></div></div>' +
       '<div class=app-card-info>' +
       '<div class=app-card-name>' + esc(app.name) + '</div>' +
       '<div class=app-card-version>' + (app.size != null ? fmtSize(app.size) + ' &middot; ' : '') + 'v' + esc(app.version) + '</div></div>' +
@@ -256,33 +248,57 @@ async function startShare(appId) {
   const app = apps.find((a) => a.id === appId);
   if (!app) return alert("App not found");
 
-  qrOverlay.hidden = false;
-  qrTitle.textContent = "Share: " + app.name;
-  qrStatus.textContent = "Starting session…";
-  qrCode.innerHTML = "";
+  const card = document.querySelector(`.app-card[data-id="${appId}"]`);
+  if (!card) return;
+  const oldExpanded = document.querySelector(".app-card.expanded");
+  if (oldExpanded) closeQr();
+  card.classList.add("expanded", "sending");
 
   const sessionId = generateId(22);
   const key = generateId(22);
   const hostId = "pwarx-" + sessionId;
+  const url = window.location.origin + "/#join=" + sessionId + "&key=" + key + "&id=" + appId;
+
+  const qrDiv = document.createElement("div");
+  qrDiv.className = "app-card-qr";
+  qrDiv.innerHTML =
+    '<div class="qr-code"></div>' +
+    '<div class="app-card-status">Starting session\u2026</div>' +
+    '<div class="app-card-actions-row">' +
+    '<button type="button" class="app-card-copy">Copy Link</button>' +
+    '<button type="button" class="app-card-cancel">Cancel</button></div>';
+  card.appendChild(qrDiv);
+
+  const qrEl = qrDiv.querySelector(".qr-code");
+  const statusEl = qrDiv.querySelector(".app-card-status");
+  const cancelBtn = qrDiv.querySelector(".app-card-cancel");
+  const copyBtn = qrDiv.querySelector(".app-card-copy");
+  cancelBtn.addEventListener("click", closeQr);
+  copyBtn.addEventListener("click", () => {
+    navigator.clipboard.writeText(url).then(() => {
+      copyBtn.textContent = "Copied!";
+      setTimeout(() => { copyBtn.textContent = "Copy Link"; }, 2000);
+    });
+  });
 
   try {
     const peer = await openPeer(hostId);
-    shareState = { peer, app, appId, conns: new Map(), key };
+    shareState = { peer, app, appId, conns: new Map(), key, statusEl };
 
     peer.on("connection", (conn) => {
       conn.on("open", () => {
         shareState.conns.set(conn.peer, conn);
-        qrStatus.textContent = "Peer connected! Verifying…";
+        statusEl.textContent = "Peer connected! Verifying\u2026";
       });
       conn.on("data", (data) => {
         try {
           const msg = typeof data === "string" ? JSON.parse(data) : data;
           if (msg.kind === "auth-key") {
             if (msg.key === shareState.key) {
-              qrStatus.textContent = "Authenticated! Sending app…";
+              statusEl.textContent = "Authenticated! Sending app\u2026";
               sendAppToPeer(conn, shareState.app);
             } else {
-              qrStatus.textContent = "Authentication failed — closing connection";
+              statusEl.textContent = "Authentication failed \u2014 closing connection";
               conn.close();
             }
           }
@@ -292,14 +308,13 @@ async function startShare(appId) {
     });
 
     peer.on("error", (err) => {
-      qrStatus.textContent = "Error: " + err.message;
+      statusEl.textContent = "Error: " + err.message;
     });
 
-    const url = window.location.origin + "/#join=" + sessionId + "&key=" + key + "&id=" + appId;
-    generateQr(url);
-    qrStatus.textContent = "Waiting for peer to scan QR code…";
+    generateQr(qrEl, url);
+    statusEl.textContent = "Waiting for peer to scan QR code\u2026";
   } catch (err) {
-    qrStatus.textContent = "Failed: " + err.message;
+    statusEl.textContent = "Failed: " + err.message;
   }
 }
 
@@ -310,40 +325,55 @@ async function sendAppToPeer(conn, app) {
   conn.send(JSON.stringify(manifest));
 
   const entries = Object.entries(app.files);
+  const iconIdx = app.icon ? entries.findIndex(([p]) => p === app.icon) : -1;
+  if (iconIdx > 0) [entries[0], entries[iconIdx]] = [entries[iconIdx], entries[0]];
+
+  const card = document.querySelector(`.app-card[data-id="${app.id}"]`);
+  const pie = card?.querySelector(".app-card-pie");
+  const statusEl = shareState?.statusEl;
+
+  if (card) card.classList.add("sending");
+
   let sent = 0;
   for (const [path, file] of entries) {
     const msg = JSON.stringify({ kind: "file", path, mime: file.mime, data: file.data });
     conn.send(msg);
     sent++;
-    qrStatus.textContent = "Sending " + sent + "/" + entries.length + " files";
+    const pct = Math.round((sent / entries.length) * 100);
+    if (statusEl) statusEl.textContent = "Sending " + sent + "/" + entries.length + " files";
+    if (pie) {
+      const wedgeDeg = Math.round(pct / 100 * 360);
+      pie.style.mask = "conic-gradient(transparent 0deg " + wedgeDeg + "deg, #fff " + wedgeDeg + "deg 360deg)";
+      pie.style.webkitMask = pie.style.mask;
+    }
     if (sent % 5 === 0) await sleep(0);
   }
-  qrStatus.textContent = "Done! Keep this window open so your friend can install the PWA.";
-  qrTitle.textContent = "Session active";
+  if (statusEl) statusEl.textContent = "Done! Keep this window open so your friend can install the PWA.";
 }
 
 // ---- QR code ----
 
-function generateQr(url) {
-  qrCode.innerHTML = "";
+function generateQr(el, url) {
+  el.innerHTML = "";
   if (typeof QRCode !== "undefined") {
-    new QRCode(qrCode, { text: url, width: 200, height: 200, colorDark: "#000", colorLight: "#fff", correctLevel: QRCode.CorrectLevel.H });
+    new QRCode(el, { text: url, width: 180, height: 180, colorDark: "#000", colorLight: "#fff", correctLevel: QRCode.CorrectLevel.H });
   } else {
-    qrCode.innerHTML = "<p style='color:#888;font-size:0.8rem'>QR library not loaded</p>";
+    el.innerHTML = "<p style='color:#888;font-size:0.8rem'>QR library not loaded</p>";
   }
 }
 
 function closeQr() {
-  qrOverlay.hidden = true;
+  document.querySelectorAll(".app-card.expanded, .app-card.sending").forEach((c) => {
+    c.classList.remove("expanded", "sending");
+    const qrArea = c.querySelector(".app-card-qr");
+    if (qrArea) qrArea.remove();
+  });
   if (shareState && shareState.peer) {
     for (const c of shareState.conns.values()) c.close();
     shareState.peer.destroy();
   }
   shareState = null;
 }
-
-qrClose.addEventListener("click", closeQr);
-qrCancel.addEventListener("click", closeQr);
 
 // ---- Join (PeerJS client) ----
 
@@ -355,10 +385,28 @@ async function joinSession(sessionId, key, appId) {
   currentKey = key;
   const hostId = "pwarx-" + sessionId;
   setCookie("pwarx", "join=" + sessionId + "&key=" + key + (appId ? "&id=" + appId : ""), 1);
-  progressOverlay.hidden = false;
-  progressName.textContent = "Connecting…";
-  progressBar.style.width = "0%";
-  progressText.textContent = "";
+
+  // create receiving card inline
+  const card = document.createElement("div");
+  card.className = "app-card receiving";
+  card.innerHTML =
+    '<div class="app-card-icon-wrapper">' +
+      '<div class="app-card-icon placeholder"></div>' +
+      '<div class="app-card-pie"></div>' +
+    '</div>' +
+    '<div class="app-card-info">' +
+      '<div class="app-card-name">Connecting\u2026</div>' +
+      '<div class="app-card-version"></div>' +
+    '</div>' +
+    '<div class="app-card-actions"></div>';
+  appList.hidden = false;
+  emptyState.hidden = true;
+  appCards.prepend(card);
+
+  const iconEl = card.querySelector(".app-card-icon");
+  const pie = card.querySelector(".app-card-pie");
+  const nameEl = card.querySelector(".app-card-name");
+  const versionEl = card.querySelector(".app-card-version");
 
   try {
     const clientId = hostId + "-" + generateId(8);
@@ -371,7 +419,7 @@ async function joinSession(sessionId, key, appId) {
       setTimeout(() => rej(new Error("Connection timeout")), 15000);
     });
 
-    progressName.textContent = "Receiving app…";
+    nameEl.textContent = "Receiving app\u2026";
 
     conn.send(JSON.stringify({ kind: "auth-key", key }));
 
@@ -392,18 +440,30 @@ async function joinSession(sessionId, key, appId) {
           receivedFiles = {};
           receivedCount = 0;
           receivedBytes = 0;
-          progressBar.style.width = "0%";
-          progressText.textContent = "0%";
+          nameEl.textContent = esc(msg.name);
+          versionEl.textContent = "v" + esc(msg.version);
+          pie.style.mask = "conic-gradient(transparent 0deg 0deg, #fff 0deg 360deg)";
+          pie.style.webkitMask = pie.style.mask;
         } else if (msg.kind === "file") {
           receivedFiles[msg.path] = { data: msg.data, mime: msg.mime };
           receivedCount++;
           receivedBytes += msg.data.length;
+          // show icon as soon as it arrives
+          if (appMeta && msg.path === appMeta.icon) {
+            const img = new Image();
+            img.className = "app-card-icon";
+            img.src = fileDataUrl({ data: msg.data, mime: msg.mime });
+            iconEl.replaceWith(img);
+          }
           const pct = totalBytes > 0
             ? Math.round((receivedBytes / totalBytes) * 100)
             : Math.round((receivedCount / expectedCount) * 100);
-          progressBar.style.width = pct + "%";
-          progressText.textContent = pct + "% (" + (totalBytes ? fmtSize(receivedBytes) + "/" + fmtSize(totalBytes) : receivedCount + "/" + expectedCount + " files") + ")";
-          progressName.textContent = "Receiving: " + msg.path.split("/").pop();
+          const wedgeDeg = Math.round(pct / 100 * 360);
+          pie.style.mask = "conic-gradient(transparent 0deg " + wedgeDeg + "deg, #fff " + wedgeDeg + "deg 360deg)";
+          pie.style.webkitMask = pie.style.mask;
+          versionEl.textContent = totalBytes
+            ? fmtSize(receivedBytes) + "/" + fmtSize(totalBytes)
+            : receivedCount + "/" + expectedCount + " files";
           if (receivedCount >= expectedCount) {
             finishReceive(peer, conn, appMeta, receivedFiles);
           }
@@ -413,33 +473,35 @@ async function joinSession(sessionId, key, appId) {
 
     conn.on("close", () => {
       if (receivedCount < expectedCount) {
-        progressText.textContent = "Connection closed before transfer complete";
+        nameEl.textContent = "Connection closed before transfer complete";
       }
     });
 
     conn.on("error", (err) => {
-      progressText.textContent = "Error: " + err.message;
+      nameEl.textContent = "Error: " + err.message;
     });
 
   } catch (err) {
-    progressText.textContent = "Failed: " + err.message;
-    progressName.textContent = "";
-    setTimeout(() => { progressOverlay.hidden = true; }, 3000);
+    nameEl.textContent = "Failed: " + err.message;
+    versionEl.textContent = "";
+    setTimeout(() => { card.remove(); }, 3000);
   }
 }
 
 async function finishReceive(peer, conn, meta, files) {
-  progressName.textContent = "Saving app…";
+  const card = appCards.querySelector(".app-card.receiving");
+  const pie = card?.querySelector(".app-card-pie");
+  if (pie) {
+    pie.style.mask = "conic-gradient(transparent 0deg 360deg, #fff 360deg 360deg)";
+    pie.style.webkitMask = pie.style.mask;
+  }
   const id = meta.name + "-v" + (meta.version || "0");
   const size = pkgSize(files);
   const app = { id, name: meta.name, version: meta.version || "0", size, entry: meta.entry, icon: meta.icon || "", files };
   await saveApp(app);
   conn.close();
   peer.destroy();
-  progressBar.style.width = "100%";
-  progressText.textContent = "App received!";
   await sleep(500);
-  progressOverlay.hidden = true;
   setCookie("pwarx", "join=" + currentSessionId + "&key=" + currentKey + "&id=" + id, 7);
   location.href = "/app/" + id + "/" + app.entry;
 }

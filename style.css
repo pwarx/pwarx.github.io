@@ -81,10 +81,6 @@ h2 { font-size: 0.95rem; font-weight: 600; margin: 1.5rem 0 0.75rem; letter-spac
   padding: 0.85rem 1rem; background: var(--panel);
   border: 1px solid var(--border); border-radius: 0.75rem; gap: 0.75rem;
 }
-.app-card-icon {
-  width: 2.5rem; height: 2.5rem; border-radius: 0.5rem; object-fit: cover;
-  flex-shrink: 0; background: var(--bg);
-}
 .app-card-info { flex: 1; min-width: 0; }
 .app-card-info > * + * { margin-top: 0.15rem; }
 .app-card-name { font-weight: 600; font-size: 0.95rem; }
@@ -105,34 +101,70 @@ h2 { font-size: 0.95rem; font-weight: 600; margin: 1.5rem 0 0.75rem; letter-spac
 }
 .btn-danger:hover { color: #c66; }
 .empty-state { text-align: center; margin-top: 2rem; font-size: 0.85rem; color: var(--muted); }
-.qr-overlay, .progress-overlay {
-  position: fixed; inset: 0; z-index: 80;
-  display: grid; place-items: center;
-  background: rgba(0,0,0,0.7); padding: 1rem;
+
+/* ---- Expanded card (sender share view) ---- */
+.app-card.expanded { flex-wrap: wrap; }
+.app-card-qr {
+  width: 100%;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 0.5rem; padding-top: 0.75rem;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height .3s ease, opacity .3s ease, padding .3s ease;
 }
-.qr-overlay[hidden], .progress-overlay[hidden] { display: none !important; }
-.qr-panel, .progress-panel {
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: 0.75rem; padding: 1.5rem 2rem;
-  text-align: center; min-width: min(20rem,100%); max-width: 90vw;
+.app-card.expanded .app-card-qr {
+  max-height: 320px;
+  opacity: 1;
+  padding-top: 0.75rem;
 }
-.qr-close {
-  float: right; background: none; border: none; color: var(--muted);
-  font-size: 1.4rem; cursor: pointer; padding: 0; line-height: 1;
+.app-card-qr .qr-code { margin: 0.25rem 0; display: flex; justify-content: center; }
+.app-card-qr .qr-code canvas, .app-card-qr .qr-code img { border-radius: 0.35rem; }
+.app-card-status { font-size: 0.75rem; color: var(--muted); }
+.app-card-cancel, .app-card-copy {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  font: inherit; font-size: 0.75rem; padding: 0.3rem 0.8rem; border-radius: 0.35rem;
+  cursor: pointer;
 }
-.qr-close:hover { color: var(--accent); }
-.qr-panel h3 { margin: 0.5rem 0 0.75rem; font-size: 1rem; }
-.qr-code { margin: 1rem 0; display: flex; justify-content: center; }
-.qr-code canvas, .qr-code img { border-radius: 0.35rem; }
-.qr-status { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem; }
-.progress-panel h3 { font-size: 1rem; margin-bottom: 0.5rem; }
-.progress-name { margin-bottom: 1rem; font-size: 0.85rem; color: var(--muted); }
-.progress-bar-track {
-  width: 100%; height: 0.5rem; background: var(--bg);
-  border-radius: 0.25rem; overflow: hidden; margin-bottom: 0.5rem;
+.app-card-cancel:hover { color: #c66; border-color: #c66; }
+.app-card-copy:hover { color: var(--accent); border-color: var(--accent); }
+.app-card-actions-row { display: flex; gap: 0.4rem; justify-content: center; }
+
+/* ---- Card icon wrapper + pie overlay ---- */
+.app-card-icon-wrapper {
+  position: relative;
+  width: 48px; height: 48px;
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg);
 }
-.progress-bar-fill { height: 100%; background: var(--primary); border-radius: 0.25rem; transition: width .2s; }
-.progress-text { font-size: 0.8rem; color: var(--muted); }
+.app-card-icon { width: 100%; height: 100%; object-fit: cover; display: block; background: var(--bg); }
+.app-card-icon.placeholder {
+  background: var(--panel);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.app-card-pie {
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  background: rgba(0,0,0,0.55);
+  mask: conic-gradient(transparent 0deg 0deg, #fff 0deg 360deg);
+  -webkit-mask: conic-gradient(transparent 0deg 0deg, #fff 0deg 360deg);
+  transition: mask .2s, -webkit-mask .2s;
+  display: none;
+}
+.app-card.sending .app-card-actions,
+.app-card.receiving .app-card-actions { display: none; }
+.app-card.sending .app-card-pie,
+.app-card.receiving .app-card-pie { display: block; }
+.app-card.receiving .app-card-version {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
 .debug-btn {
   position: fixed; bottom: 0.5rem; right: 0.5rem; z-index: 200;
   background: var(--panel); border: 1px solid var(--border); color: var(--accent);
