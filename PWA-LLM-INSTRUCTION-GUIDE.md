@@ -305,12 +305,19 @@ Validation on import:
 - reject empty file set
 - compute `id = name + "-v" + (version || "0")`
 
-Packaging rules for guest projects:
+Packaging rules for guest projects (not the pwarx shell):
 
 - Rewrite any `../pkg/` (or other out-of-root) URLs so every file lives inside the package tree.
-- Include `manifest.webmanifest` / icons from the game if they exist.
-- Emit `<Name>-v<Version>.wasm-pkg`.
-- Provide pack/unpack scripts in more than one language if the ecosystem is polyglot; checksum round-trips.
+- Read `name` / `icon` from the game’s `manifest.webmanifest` if present; version from `PORT_VERSION` or a similar sidecar (opaque string, no semver required).
+- Include every file the entry needs. Guess MIME from extension (see §5) when the source has no type.
+- Emit `<Name>-v<Version>.wasm-pkg` (JSON, `packageFormat: 1`).
+- Paths inside `files` are relative, POSIX, no `..`.
+
+**Where packers live.** The relay PWA only **imports** `.wasm-pkg`. It does not ship pack/unpack tooling. pwarx’s README describes `scripts/package-wasm-pkg.{bash,js,py,ps1}` plus unpack/test twins and a per-game `scripts/package-pwarx.sh`, but **those files are not in [pwarx.github.io](https://github.com/pwarx/pwarx.github.io)** — they belong next to the WASM game (or a separate tooling repo). Do not dump four language ports into the shell.
+
+When the user asks you to package a game, write **one** packer in the game’s stack (bash is enough). Unpack + a checksum round-trip test are optional. Extra language ports are only worth it if you must prove bit-identical JSON across tools.
+
+A packer should: walk `src-dir` → base64 each file → write the JSON object above. A per-game script may also rewrite HTML (`../pkg/` → `./pkg/`) before packing.
 
 UI: drag-and-drop + hidden `<input type="file" accept=".wasm-pkg">`. Also offer Download so a received app can leave the browser.
 
