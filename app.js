@@ -738,7 +738,7 @@ function listDirs(paths) {
 async function shellExec(line) {
   const parts = line.trim().split(/\s+/);
   const cmd = parts[0];
-  const arg = parts.slice(1).join(" ");
+  let arg = parts.slice(1).join(" ");
 
   if (cmd === "help") {
     shellPrint("Commands:");
