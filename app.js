@@ -799,6 +799,7 @@ async function shellExec(line) {
         shellPath = "";
       }
     } else {
+      arg = arg.replace(/\/+$/, "");
       if (!shellApp) {
         const apps = await listApps();
         const exact = apps.filter(a => a.id === arg);
