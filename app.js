@@ -218,7 +218,7 @@ appCards.addEventListener("click", async (e) => {
   if (action === "launch") {
     await launchApp(id);
   } else if (action === "delete") {
-    if (!confirm("Delete this app?")) return;
+    if (!e.shiftKey && !confirm("Delete this app?")) return;
     const app = await getApp(id);
     if (!app) return;
     await deleteApp(id);
