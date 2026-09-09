@@ -117,6 +117,7 @@ async function serveDynamicManifest(appId) {
     name: app.name,
     short_name: app.name,
     start_url: "/#id=" + app.id,
+    scope: "/",
     display: "standalone",
     background_color: "#1a1a1a",
     theme_color: "#1a1a1a",

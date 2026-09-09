@@ -66,12 +66,21 @@ async function getApp(id) {
   return app;
 }
 
+async function hashId(name, version) {
+  const data = new TextEncoder().encode(name + "\x00" + (version || "0"));
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  const bytes = new Uint8Array(hash);
+  let hex = "";
+  for (let i = 0; i < 8; i++) hex += bytes[i].toString(16).padStart(2, "0");
+  return hex;
+}
+
 async function parseWasmPkg(file) {
   const text = await file.text();
   const pkg = JSON.parse(text);
   if (pkg.packageFormat !== 1) throw new Error("Unknown package format: " + pkg.packageFormat);
   if (!pkg.name || !pkg.files || !pkg.entry) throw new Error("Invalid package");
-  const id = pkg.name + "-v" + (pkg.version || "0");
+  const id = await hashId(pkg.name, pkg.version);
   const size = pkgSize(pkg.files);
   return { id, name: pkg.name, version: pkg.version || "0", size, entry: pkg.entry, icon: pkg.icon, files: pkg.files };
 }
@@ -510,7 +519,7 @@ async function finishReceive(peer, conn, meta, files) {
     pie.style.mask = "conic-gradient(transparent 0deg 360deg, #fff 360deg 360deg)";
     pie.style.webkitMask = pie.style.mask;
   }
-  const id = meta.name + "-v" + (meta.version || "0");
+  const id = await hashId(meta.name, meta.version);
   const size = pkgSize(files);
   const app = { id, name: meta.name, version: meta.version || "0", size, entry: meta.entry, icon: meta.icon || "", files };
   log("action", "Saved " + meta.name + " v" + (meta.version || "0"));
