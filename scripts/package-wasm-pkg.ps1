@@ -15,6 +15,8 @@ $mimeMap = @{
     ".png" = "image/png"; ".jpg" = "image/jpeg"; ".jpeg" = "image/jpeg"
     ".svg" = "image/svg+xml"; ".ico" = "image/x-icon"
     ".webmanifest" = "application/manifest+json"
+    ".woff" = "font/woff"; ".woff2" = "font/woff2"
+    ".ttf" = "font/ttf"; ".otf" = "font/otf"
     ".ts" = "video/mp2t"; ".m2ts" = "video/mp2t"
     ".pdi" = "application/octet-stream"; ".pda" = "application/octet-stream"
     ".bin" = "application/octet-stream"

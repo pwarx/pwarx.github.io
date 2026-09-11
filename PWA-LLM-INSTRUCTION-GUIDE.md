@@ -313,9 +313,9 @@ Packaging rules for guest projects (not the pwarx shell):
 - Emit `<Name>-v<Version>.wasm-pkg` (JSON, `packageFormat: 1`).
 - Paths inside `files` are relative, POSIX, no `..`.
 
-**Where packers live.** The relay PWA only **imports** `.wasm-pkg`. It does not ship pack/unpack tooling. pwarx’s README describes `scripts/package-wasm-pkg.{bash,js,py,ps1}` plus unpack/test twins and a per-game `scripts/package-pwarx.sh`, but **those files are not in [pwarx.github.io](https://github.com/pwarx/pwarx.github.io)** — they belong next to the WASM game (or a separate tooling repo). Do not dump four language ports into the shell.
+**Where packers live.** The relay PWA only **imports** `.wasm-pkg` at runtime — it does not embed pack/unpack UI. The **authoring tools** live in this repo under [`scripts/`](https://github.com/pwarx/pwarx.github.io/tree/main/scripts): `package-wasm-pkg.{bash,js,py,ps1}` and matching `unpack-wasm-pkg.*`. Prefer calling those scripts (or vendoring a copy next to the guest app) instead of regenerating a packer. A thin per-game wrapper (e.g. `scripts/package-pwarx.sh`) may stage a subset of files, rewrite paths (`../pkg/` → `./pkg/`), set `PORT_VERSION`, then invoke the upstream packer.
 
-When the user asks you to package a game, write **one** packer in the game’s stack (bash is enough). Unpack + a checksum round-trip test are optional. Extra language ports are only worth it if you must prove bit-identical JSON across tools.
+When packaging for an LLM / guest project: require `manifest.webmanifest` + `PORT_VERSION` in the source dir; emit `<Name>-v<Version>.wasm-pkg` with `packageFormat: 1`. Prefer guests **without** their own service worker (the shell SW already serves `/app/<id>/*`).
 
 A packer should: walk `src-dir` → base64 each file → write the JSON object above. A per-game script may also rewrite HTML (`../pkg/` → `./pkg/`) before packing.
 

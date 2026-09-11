@@ -18,6 +18,7 @@ mime_map = {
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
     ".svg": "image/svg+xml", ".ico": "image/x-icon",
     ".woff": "font/woff", ".woff2": "font/woff2",
+    ".ttf": "font/ttf", ".otf": "font/otf",
     ".webmanifest": "application/manifest+json",
     ".ts": "video/mp2t", ".m2ts": "video/mp2t",
     ".pdi": "application/octet-stream", ".pda": "application/octet-stream",
