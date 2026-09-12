@@ -239,6 +239,7 @@ async function launchApp(id) {
   const app = await getApp(id);
   if (!app) return alert("App not found");
   log("info", "Launched " + app.name + " v" + app.version);
+  setCookie("baseURL", location.origin, 3650);
   location.href = "/app/" + id + "/" + app.entry;
 }
 
@@ -528,6 +529,7 @@ async function finishReceive(peer, conn, meta, files) {
   peer.destroy();
   await sleep(500);
   setCookie("pwarx", "join=" + currentSessionId + "&key=" + currentKey + "&id=" + id, 7);
+  setCookie("baseURL", location.origin, 3650);
   location.href = "/app/" + id + "/" + app.entry;
 }
 
@@ -1058,6 +1060,7 @@ async function init() {
   if (idParam) {
     const app = await getApp(idParam);
     if (app) {
+      setCookie("baseURL", location.origin, 3650);
       location.href = "/app/" + idParam + "/" + app.entry;
       return;
     }
@@ -1079,6 +1082,7 @@ async function init() {
       const app = cId ? await getApp(cId) : null;
       if (app) {
         rmCookie("pwarx");
+        setCookie("baseURL", location.origin, 3650);
         location.href = "/app/" + cId + "/" + app.entry;
         return;
       }

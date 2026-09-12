@@ -334,6 +334,28 @@ location.href = "/app/" + encodeURIComponent(id) + "/" + app.entry;
 - If the guest registers its own service worker, it may fight the shell SW. Document this: prefer guests without their own SW, or register guest SW under `/app/<id>/` scope only.
 - Do not iframe guests unless you need isolation; a top-level navigation keeps WASM, Fullscreen, and “Add to Home Screen” simpler.
 
+### baseURL cookie — guest app “Return / Share” link
+
+Before navigating to `/app/<id>/<entry>`, set a long-lived `baseURL` cookie so the guest can wire its **Share** or **Return to launcher** menu item without hard-coding the host:
+
+```js
+setCookie("baseURL", location.origin, 3650);
+location.href = "/app/" + id + "/" + app.entry;
+```
+
+Cookie contract:
+
+| Field | Value |
+|-------|-------|
+| Name | `baseURL` |
+| Value | Absolute origin (URI-encoded), e.g. `https://user.github.io` |
+| Path | `/` |
+| SameSite | `Lax` |
+| Expires | Long-lived (e.g. 3650 days — not session, not 1-day) |
+| HttpOnly | No (guest JS must read it) |
+
+The cookie is set **on every launch entry point** (Launch button, `#id=` direct launch, cookie bridge auto-launch, P2P receive completion) so the value stays current. Guest apps consume it via their own resolver chain (cookie → `<meta name="baseURL">` → `config.json` → fallback).
+
 ---
 
 ## 9. P2P share (optional but characteristic)
@@ -439,6 +461,12 @@ For a game/app to work inside the shell:
 6. Prefer no `SharedArrayBuffer` unless the **host origin** sends COOP/COEP (GitHub Pages does not).
 7. Provide an icon and a short name.
 8. If it needs persistence, use its own IDB database name, not the shell’s.
+9. **Share / Return link:** To offer a “Share” or “Return to launcher” menu item without hard-coding the host, read the `baseURL` cookie set by the shell before each launch. Resolve with this priority:
+   - Cookie `baseURL` (set by the shell on every launch)
+   - `<meta name="baseURL" content="...">` (static packaging fallback)
+   - Optional `config.json` `{ "baseURL": "..." }` next to the entry HTML
+   - If the page URL starts with `/app/`, use `location.origin` (same-origin SW hosting fallback)
+   - Otherwise, hide the Share/Return link
 
 ---
 
@@ -492,6 +520,11 @@ P2P (if present)
 - [ ] Progress reaches 100% and app appears on the receiver
 - [ ] Closing the QR panel tears down PeerJS
 - [ ] Documented LAN/NAT limitation
+
+Launch
+
+- [ ] `baseURL` cookie set before every `/app/<id>/<entry>` navigation (Launch button, `#id=`, cookie bridge, P2P receive)
+- [ ] Guest Share/Return link resolves from cookie (or meta/config fallback) without hard-coded host
 
 Quality
 
