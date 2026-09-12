@@ -36,15 +36,17 @@ header h1 { font-size: 1.4rem; font-weight: 600; letter-spacing: 0.04em; }
 .about-btn:hover { color: var(--accent); border-color: var(--accent); }
 .about-overlay {
   position: fixed; inset: 0; z-index: 90;
-  display: grid; place-items: center;
-  background: rgba(0,0,0,0.7); padding: 1rem;
+  background: rgba(0,0,0,0.7);
+  padding: 3rem 1rem 1rem;
 }
 .about-overlay[hidden] { display: none !important; }
 .about-panel {
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 0.75rem; padding: 1.5rem 2rem;
   text-align: center; max-width: 22rem; width: 100%;
+  margin: 0 auto;
   line-height: 1.5;
+  position: relative;
 }
 .about-panel h3 { margin: 0.5rem 0 0.75rem; font-size: 1rem; }
 .about-panel p { margin: 0.5rem 0; font-size: 0.85rem; color: var(--muted); }
