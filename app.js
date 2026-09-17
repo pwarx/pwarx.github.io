@@ -1073,13 +1073,16 @@ async function init() {
 
   // Cookie bridge (iOS 17.2+ copies cookie from Safari to PWA at install)
   const pwarxCookie = getCookie("pwarx");
+  log("info", "Cookie bridge: pwarx cookie " + (pwarxCookie ? "found: " + pwarxCookie.slice(0, 80) : "not found"));
   if (pwarxCookie) {
     const cp = new URLSearchParams(pwarxCookie);
     const cJoin = cp.get("join");
     const cKey = cp.get("key");
     const cId = cp.get("id");
+    log("info", "Cookie bridge: join=" + (cJoin || "null") + " key=" + (cKey ? "set" : "null") + " id=" + (cId || "null"));
     if (cId || cJoin) {
       const app = cId ? await getApp(cId) : null;
+      log("info", "Cookie bridge: app in IDB=" + (app ? app.name : "not found"));
       if (app) {
         rmCookie("pwarx");
         setCookie("baseURL", location.origin, 3650);
@@ -1087,10 +1090,12 @@ async function init() {
         return;
       }
       if (cJoin) {
+        log("info", "Cookie bridge: re-joining session " + cJoin);
         rmCookie("pwarx");
         joinSession(cJoin, cKey, cId);
         return;
       }
+      log("info", "Cookie bridge: no join param, nothing to do");
     }
   }
 
