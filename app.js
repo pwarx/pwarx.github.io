@@ -530,6 +530,13 @@ async function finishReceive(peer, conn, meta, files) {
   await sleep(500);
   setCookie("pwarx", "join=" + currentSessionId + "&key=" + currentKey + "&id=" + id, 7);
   setCookie("baseURL", location.origin, 3650);
+  // Store join info in SW cache so the dynamic manifest can encode it in start_url
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    if (reg.active) {
+      reg.active.postMessage({ kind: "store-join", join: currentSessionId, key: currentKey, id });
+    }
+  } catch (_) {}
   location.href = "/app/" + id + "/" + app.entry;
 }
 

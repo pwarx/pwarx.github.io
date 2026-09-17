@@ -1,5 +1,6 @@
 const DB = "pwarx-apps";
 const SHELL_CACHE = "pwarx-shell-v1";
+const PENDING_JOIN_CACHE = "pwarx-pending-join-v1";
 const SHELL_URLS = ["/", "/index.html", "/app.js", "/style.css", "/qrcode-lib.js", "/manifest.webmanifest", "/sw.js"];
 
 self.addEventListener("install", (e) => {
@@ -13,10 +14,22 @@ self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
-        keys.filter((k) => k !== SHELL_CACHE).map((k) => caches.delete(k))
+        keys.filter((k) => k !== SHELL_CACHE && k !== PENDING_JOIN_CACHE).map((k) => caches.delete(k))
       )
     ).then(() => clients.claim())
   );
+});
+
+// Store/retrieve pending PeerJS join info so the manifest can encode it in start_url
+self.addEventListener("message", (e) => {
+  if (e.data && e.data.kind === "store-join") {
+    e.waitUntil(
+      caches.open(PENDING_JOIN_CACHE).then((cache) =>
+        cache.put("/pending-join/" + e.data.id,
+          new Response(JSON.stringify({ join: e.data.join, key: e.data.key, id: e.data.id })))
+      )
+    );
+  }
 });
 
 self.addEventListener("fetch", (e) => {
@@ -113,10 +126,22 @@ async function serveDynamicManifest(appId) {
     iconSrc = "data:" + app.files[app.icon].mime + ";base64," + app.files[app.icon].data;
   }
 
+  // Check for pending PeerJS join session info in cache
+  let startUrl = "/#id=" + app.id;
+  try {
+    const joinCache = await caches.open(PENDING_JOIN_CACHE);
+    const joinReq = await joinCache.match("/pending-join/" + app.id);
+    if (joinReq) {
+      const joinInfo = await joinReq.json();
+      startUrl += "&join=" + joinInfo.join + "&key=" + joinInfo.key;
+      await joinCache.delete("/pending-join/" + app.id);
+    }
+  } catch (_) {}
+
   const manifest = {
     name: app.name,
     short_name: app.name,
-    start_url: "/#id=" + app.id,
+    start_url: startUrl,
     scope: "/",
     display: "standalone",
     background_color: "#1a1a1a",
