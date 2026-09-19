@@ -250,7 +250,7 @@ async function downloadPkg(id) {
   const blob = new Blob([JSON.stringify(pkg)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = app.id + ".wasm-pkg";
+  a.download = (app.name + "-v" + app.version).replace(/[\\/:*?"<>|]/g, "_") + ".wasm-pkg";
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
